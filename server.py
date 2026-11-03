@@ -1,4 +1,6 @@
 import json, os, urllib.request, urllib.error, secrets
+import accounts
+import payments
 from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
@@ -15,6 +17,10 @@ jobs = {}
 
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/api/paypal/config':
+            return payments.reply(self, {'enabled': os.environ.get('PAYPAL_ENV')=='sandbox', 'clientId':os.environ.get('PAYPAL_CLIENT_ID',''), 'environment':'sandbox'})
+        if self.path in ('/api/me', '/api/orders'):
+            return accounts.get(self)
         if self.path != '/api/languages':
             return super().do_GET()
         try:
@@ -34,6 +40,10 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(ROOT / 'dist'), **kwargs)
 
     def do_POST(self):
+        if self.path in ('/api/paypal/create','/api/paypal/capture','/api/paypal/sync'):
+            return payments.handle(self)
+        if self.path in ('/api/register', '/api/login', '/api/logout'):
+            return accounts.post(self)
         try:
             if self.headers.get('Sec-Fetch-Site') == 'cross-site':
                 self.send_error(403); return

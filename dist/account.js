@@ -1,0 +1,17 @@
+const $=id=>document.getElementById(id);let lang='zh',register=false;try{lang=localStorage.getItem('uiLanguage')||'zh'}catch{}
+const t=(zh,en)=>lang==='en'?en:zh;
+function render(){document.documentElement.lang=lang==='en'?'en':'zh-CN';for(const [id,text] of Object.entries({back:t('← 返回翻译网站','← Back to translation'),language:t('EN','中文'),title:register?t('注册账户','Create account'):t('登录','Sign in'),emailLabel:t('邮箱','Email'),passwordLabel:t('密码（10–128个字符）','Password (10–128 characters)'),submit:register?t('注册账户','Create account'):t('登录','Sign in'),switch:register?t('已有账户？去登录','Already registered? Sign in'):t('没有账户？注册','New here? Create account'),help:t('使用 Supabase 账户。注册后请按邮件提示验证邮箱；旧版本地账户需重新注册。暂未提供密码找回入口。','Powered by Supabase. Follow email verification instructions after signing up. Previous local accounts must register again. Password reset is not available on this page yet.'),profileTitle:t('我的账户','My account'),logout:t('退出登录','Sign out'),ordersTitle:t('购买记录','Purchase history')}))$(id).textContent=text;$('password').autocomplete=register?'new-password':'current-password'}
+async function api(path,body){
+ const client=window.transpageSupabase;if(!client)throw Error(t('账户服务加载失败，请刷新重试','Account service could not load. Refresh to retry.'));
+ let result;
+ if(path==='me'){const {data,error}=await client.auth.getUser();if(error&&error.name!=='AuthSessionMissingError')throw error;return {user:data?.user||null}}
+ if(path==='orders'){const {data,error}=await client.from('orders').select('id,plan,amount_minor,currency,status,created_at,paid_at,credits,environment').order('created_at',{ascending:false});if(error)throw Error(t('购买记录尚不可用，请确认数据库初始化完成。','Purchase history unavailable. Database setup may be pending.'));return {orders:data.map(o=>({...o,created_at:Date.parse(o.created_at)/1000}))}}
+ if(path==='register'){result=await client.auth.signUp({...body,options:{emailRedirectTo:location.origin+'/account.html'}});if(result.error)throw result.error;return {ok:true,confirmationRequired:!result.data.session}}
+ if(path==='login')result=await client.auth.signInWithPassword(body);
+ if(path==='logout')result=await client.auth.signOut();
+ if(result?.error)throw result.error;return {ok:true};
+}
+async function refresh(){try{const {user}=await api('me');$('auth').hidden=!!user;$('profile').hidden=!user;if(user){$('identity').textContent=user.email;const {orders}=await api('orders');$('orders').replaceChildren();if(!orders.length){const li=document.createElement('li');li.textContent=t('暂无购买记录。支付尚未开通。','No purchases yet. Payments are not enabled.');$('orders').append(li)}for(const order of orders){$('orders').append(renderOrderRecord(order))}}}catch(e){$('status').textContent=e.message}}
+$('form').onsubmit=async e=>{e.preventDefault();$('submit').disabled=true;$('status').textContent='';try{const result=await api(register?'register':'login',{email:$('email').value,password:$('password').value});if(result.confirmationRequired)$('status').textContent=t('请前往邮箱确认注册，再返回登录。','Check your email to confirm registration, then sign in.');$('password').value='';await refresh()}catch(e){$('status').textContent=e.message}finally{$('submit').disabled=false}};
+$('switch').onclick=()=>{register=!register;render()};$('language').onclick=()=>{lang=lang==='en'?'zh':'en';try{localStorage.setItem('uiLanguage',lang)}catch{}render();refresh()};$('logout').onclick=async()=>{try{await api('logout',{});await refresh()}catch(e){$('status').textContent=e.message}};render();refresh();
+
